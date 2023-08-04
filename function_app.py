@@ -25,7 +25,7 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 
 # api routes ----
-@app.route(route="StartContainerInstance", methods="POST")
+@app.route(route="StartContainerInstance", methods=["POST"])
 def start_container_instance(req: func.HttpRequest) -> func.HttpResponse:
     """Start running a container from user provided comments
 
@@ -59,7 +59,7 @@ def start_container_instance(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(results_url, status_code=202)
 
 
-@app.route(route="GetResults/{run_id:guid}", methods="GET")
+@app.route(route="GetResults/{run_id:guid}", methods=["GET"])
 def get_results(req: func.HttpRequest) -> func.HttpResponse:
     """Get the results from a model run
 
