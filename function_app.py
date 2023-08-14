@@ -96,9 +96,12 @@ def get_results(req: func.HttpRequest) -> func.HttpResponse:
             .instance_view.current_state
         )
     except ResourceNotFoundError:
-        # check first that the file exists in data_in, if it doesn't then we have
-        # likely already collected the file so we should return an error
-        if not _check_for_file(run_id):
+        # if the results are available, then return them
+        if _check_for_file(run_id, "data_out"):
+            return func.HttpResponse(_get_completed_file(run_id), status_code=200)
+        # if the results aren't available, and the inputs have been cleared up,
+        # then that indicates results have previously been collected
+        if not _check_for_file(run_id, "data_in"):
             return func.HttpResponse("File already collected", status_code=404)
         # otherwise, the container probably hasn't started yet
         return func.HttpResponse(req.url, status_code=202)
@@ -113,6 +116,44 @@ def get_results(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(_get_completed_file(run_id), status_code=200)
 
     return func.HttpResponse("Error during processing", status_code=500)
+
+
+@app.schedule(
+    schedule=config.DELETE_SCHEDULE,
+    arg_name="timer",
+    run_on_startup=False,
+    use_monitor=False,
+)
+def delete_completed_containers(timer: func.TimerRequest) -> None:
+    """Delete completed containers
+
+    If containers have run and completed successfully, then delete them. Runs
+    once every 5 minutes.
+
+    :param timer: Functions timer
+    :type timer: func.TimerRequest
+    """
+    # pylint: disable=unused-argument
+    client = ContainerInstanceManagementClient(
+        DefaultAzureCredential(), config.SUBSCRIPTION_ID
+    )
+    resource_group = config.RESOURCE_GROUP
+
+    logging.info("Cleaning up completed containers")
+    for i in client.container_groups.list_by_resource_group(resource_group):
+        container_group_name = i.name
+        container = (
+            client.container_groups.get(resource_group, container_group_name)
+            .containers[0]
+            .instance_view.current_state
+        )
+
+        delete = False
+        if container.state == "Terminated" and container.detail_status == "Completed":
+            client.container_groups.begin_delete(resource_group, container_group_name)
+            delete = True
+
+        logging.info("* %s delete: %s", container_group_name, delete)
 
 
 # helper methods ----
@@ -207,18 +248,20 @@ def _get_completed_file(run_id: str) -> bytes:
     return file_bytes
 
 
-def _check_for_file(run_id: str) -> bool:
+def _check_for_file(run_id: str, folder: str) -> bool:
     """Check if the model run's file exists in the data_in directory
 
     :param run_id: the id for the model run
     :type run_id: str
+    :param folder: the folder to check in
+    :type folder: str
     :return: true if the file exists, false if not
     :rtype: bool
     """
     client = ShareDirectoryClient(
         config.STORAGE_ENDPOINT,
         "comments",
-        "data_in",
+        folder,
         credential=config.STORAGE_KEY,
     )
     files = [f["name"][:-5] for f in client.list_directories_and_files()]

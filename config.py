@@ -22,3 +22,5 @@ AUTO_DELETE_COMPLETED_CONTAINERS = bool(os.getenv("AUTO_DELETE_COMPLETED_CONTAIN
 
 RESOURCE_GROUP = os.environ["RESOURCE_GROUP"]
 DOCKER_TAG = os.environ.get("DOCKER_TAG", "latest")
+
+DELETE_SCHEDULE = os.environ.get("DELETE_SCHEDULE", "*/30 * * * *")
